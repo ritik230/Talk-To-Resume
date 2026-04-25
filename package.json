@@ -1,0 +1,18 @@
+{
+  "name": "talk-to-resume",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "seed:candidates": "node seed-candidates.js",
+    "test": "node --test --test-concurrency=1 --test-isolation=none"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^17.4.0",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongodb": "^6.17.0"
+  }
+}

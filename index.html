@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TalkToResume Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <div class="ambient ambient-a"></div>
+    <div class="ambient ambient-b"></div>
+
+    <header class="hero">
+      <div>
+        <p class="eyebrow">AI-powered talent discovery platform</p>
+        <h1>Candidate profiles stay searchable. Recruiters just ask.</h1>
+        <p class="hero-copy">
+          Candidates upload resumes once and maintain a persistent profile. Recruiters log in, search the talent pool, and get ranked answers instantly.
+        </p>
+      </div>
+      <nav class="hero-actions" id="topNav">
+        <button class="ghost-button" id="loginNavButton" type="button" data-route="/login">Login</button>
+        <button class="ghost-button" id="signupNavButton" type="button" data-route="/signup">Sign Up</button>
+        <button class="ghost-button hidden" id="logoutButton" type="button">Logout</button>
+      </nav>
+    </header>
+
+    <main class="workspace auth-layout">
+      <section class="panel summary-panel" id="authPanel">
+        <div class="section-block" id="loginView">
+          <div class="title-row">
+            <div>
+              <p class="section-label">Authentication</p>
+              <h3>Login</h3>
+            </div>
+          </div>
+          <form class="stack-form" id="loginForm">
+            <input id="loginEmail" type="email" placeholder="Email">
+            <input id="loginPassword" type="password" placeholder="Password">
+            <button class="send-button" type="submit">Login</button>
+          </form>
+        </div>
+
+        <div class="section-block hidden" id="signupView">
+          <div class="title-row">
+            <div>
+              <p class="section-label">Authentication</p>
+              <h3>Create account</h3>
+            </div>
+          </div>
+          <form class="stack-form" id="signupForm">
+            <input id="signupName" type="text" placeholder="Full name">
+            <input id="signupEmail" type="email" placeholder="Email">
+            <input id="signupPassword" type="password" placeholder="Password">
+            <select id="signupRole">
+              <option value="candidate">Candidate</option>
+              <option value="recruiter">Recruiter</option>
+            </select>
+            <button class="send-button" type="submit">Create account</button>
+          </form>
+        </div>
+
+        <div class="section-block hidden" id="candidateDashboard">
+          <div class="title-row">
+            <div>
+              <p class="section-label">Candidate Dashboard</p>
+              <h3>Upload resume and manage profile</h3>
+            </div>
+            <label class="upload-button" for="resumeUpload">
+              <input id="resumeUpload" type="file" accept=".pdf">
+              Upload Resume PDF
+            </label>
+          </div>
+          <div class="upload-state" id="uploadState">Upload a PDF to create or update your profile</div>
+          <div id="candidateSummaryCard" class="resume-card"></div>
+          <div class="title-row">
+            <div>
+              <p class="section-label">Profile Summary</p>
+              <h3>Your extracted highlights</h3>
+            </div>
+          </div>
+          <div id="candidateHighlights" class="project-grid"></div>
+        </div>
+
+        <div class="section-block hidden" id="recruiterDashboard">
+          <div class="title-row">
+            <div>
+              <p class="section-label">Recruiter Dashboard</p>
+              <h3>Search the talent pool</h3>
+            </div>
+            <div class="candidate-badge" id="poolBadge">0 candidates indexed</div>
+          </div>
+          <div id="matchedCandidates" class="candidate-list"></div>
+          <div class="title-row">
+            <div>
+              <p class="section-label">Matched Profiles</p>
+              <h3>Current shortlist JSON</h3>
+            </div>
+          </div>
+          <pre id="recruiterJsonOutput" class="json-output"></pre>
+          <details class="prompt-debug">
+            <summary>LLM Prompt Preview</summary>
+            <pre id="llmPromptOutput" class="json-output compact"></pre>
+          </details>
+        </div>
+      </section>
+
+      <section class="panel chat-panel" id="chatPanel">
+        <div class="panel-header">
+          <div>
+            <p class="section-label">AI Copilot</p>
+            <h2 id="chatTitle">Sign in to continue</h2>
+          </div>
+          <div class="assistant-pill" id="userBadge">Guest</div>
+        </div>
+
+        <div class="suggested-strip">
+          <p>Suggested prompts</p>
+          <div id="suggestedQuestions" class="suggested-questions"></div>
+        </div>
+
+        <div id="chatMessages" class="chat-messages"></div>
+
+        <form id="chatForm" class="chat-composer">
+          <input id="chatInput" type="text" placeholder="Recruiters can ask questions here after login..." autocomplete="off">
+          <button class="send-button" type="submit">Send</button>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script type="module" src="app.js?v=20260411-2"></script>
+</body>
+</html>
