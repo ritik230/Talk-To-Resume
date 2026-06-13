@@ -40,7 +40,6 @@ const SECTION_LABELS = {
   experience: ["experience", "work experience", "professional experience", "employment"],
   education: ["education", "academic"]
 };
-
 export async function extractResumeText(file) {
   const arrayBuffer = await file.arrayBuffer();
   const typedArray = new Uint8Array(arrayBuffer);

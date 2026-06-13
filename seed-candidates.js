@@ -604,7 +604,6 @@ function normalizeCount(rawValue) {
   }
   return Math.max(50, Math.min(100, parsed));
 }
-
 function slugify(value) {
   return String(value || "")
     .toLowerCase()

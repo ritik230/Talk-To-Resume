@@ -1,7 +1,16 @@
 import { getCollections } from "./db.js";
 import { createCandidateSemanticDocument, withEmbeddings } from "./embeddings.js";
 
+const CANDIDATE_EMBEDDING_CACHE_MAX = 500;
 const embeddingCache = new Map();
+
+function setCachedEmbedding(key, value) {
+  if (embeddingCache.size >= CANDIDATE_EMBEDDING_CACHE_MAX) {
+    const firstKey = embeddingCache.keys().next().value;
+    embeddingCache.delete(firstKey);
+  }
+  embeddingCache.set(key, value);
+}
 
 export async function createOrUpdateCandidateProfile(user, parsedData) {
   const { candidatesCollection } = getCollections();
@@ -106,21 +115,36 @@ async function createSemanticProfile(parsedData) {
   }
 
   try {
+    const chunks = document.chunks;
+    const textsToEmbed = chunks.map((c) => c.text);
     const vectors = await embedTextsWithGemini(
-      [document.overviewText, ...document.chunks.map((chunk) => chunk.text)],
+      [document.text, ...textsToEmbed],
       "RETRIEVAL_DOCUMENT"
     );
-    const semanticProfile = withEmbeddings(document, vectors, `gemini-${geminiEmbeddingModel}`);
+
+    const overviewEmbedding = vectors[0];
+    const chunkEmbeddings = vectors.slice(1);
+
     return {
-      semanticProfile,
-      embeddingProvider: semanticProfile.provider,
+      semanticProfile: {
+        provider: "gemini",
+        model: geminiEmbeddingModel,
+        overviewEmbedding,
+        chunks: chunks.map((c, i) => ({
+          type: c.type,
+          label: c.label,
+          text: c.text,
+          embedding: chunkEmbeddings[i]
+        }))
+      },
+      embeddingProvider: `gemini-${geminiEmbeddingModel}`,
       embeddingStatus: "success",
       embeddingError: null,
-      metadata: semanticProfile.metadata
+      metadata: document.metadata
     };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown embedding error.";
-    console.error(`[embeddings] ${message}`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[embeddings] Gemini embedding creation failed: ${message}`);
     return {
       semanticProfile: null,
       embeddingProvider: `gemini-${geminiEmbeddingModel}`,
@@ -134,45 +158,44 @@ async function createSemanticProfile(parsedData) {
 async function embedTextsWithGemini(texts, taskType) {
   const geminiApiKey = process.env.GEMINI_API_KEY;
   const geminiEmbeddingModel = process.env.GEMINI_EMBEDDING_MODEL || "text-embedding-004";
-  const embeddings = [];
-  for (const text of texts) {
-    const normalizedText = String(text || "").trim();
-    const cacheKey = `${geminiEmbeddingModel}:${taskType}:${normalizedText}`;
-    if (embeddingCache.has(cacheKey)) {
-      embeddings.push(embeddingCache.get(cacheKey));
-      continue;
-    }
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiEmbeddingModel}:embedContent`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": geminiApiKey
-      },
-      body: JSON.stringify({
-        model: `models/${geminiEmbeddingModel}`,
-        taskType,
-        content: {
-          parts: [{ text: normalizedText }]
-        }
-      })
-    });
+  return Promise.all(
+    texts.map(async (text) => {
+      const normalizedText = String(text || "").trim();
+      const cacheKey = `${geminiEmbeddingModel}:${taskType}:${normalizedText}`;
+      if (embeddingCache.has(cacheKey)) {
+        return embeddingCache.get(cacheKey);
+      }
 
-    if (!response.ok) {
-      throw new Error(`Gemini embedding request failed: ${await response.text()}`);
-    }
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiEmbeddingModel}:embedContent`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": geminiApiKey
+        },
+        body: JSON.stringify({
+          model: `models/${geminiEmbeddingModel}`,
+          taskType,
+          content: {
+            parts: [{ text: normalizedText }]
+          }
+        })
+      });
 
-    const payload = await response.json();
-    const vector = payload.embedding?.values;
-    if (!Array.isArray(vector) || !vector.length) {
-      throw new Error("Gemini embedding response did not include a vector.");
-    }
+      if (!response.ok) {
+        throw new Error(`Gemini embedding request failed: ${await response.text()}`);
+      }
 
-    embeddingCache.set(cacheKey, vector);
-    embeddings.push(vector);
-  }
+      const payload = await response.json();
+      const vector = payload.embedding?.values;
+      if (!Array.isArray(vector) || !vector.length) {
+        throw new Error("Gemini embedding response did not include a vector.");
+      }
 
-  return embeddings;
+      setCachedEmbedding(cacheKey, vector);
+      return vector;
+    })
+  );
 }
 
 function projectCandidate(candidate) {

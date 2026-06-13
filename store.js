@@ -25,7 +25,6 @@ export function setAuth(store, token, user) {
   localStorage.setItem("talkToResumeToken", token);
   localStorage.setItem("talkToResumeUser", JSON.stringify(user));
 }
-
 export function clearAuth(store) {
   store.token = "";
   store.user = null;

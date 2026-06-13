@@ -36,6 +36,7 @@ const matchedCandidates = document.getElementById("matchedCandidates");
 const recruiterJsonOutput = document.getElementById("recruiterJsonOutput");
 const llmPromptOutput = document.getElementById("llmPromptOutput");
 const poolBadge = document.getElementById("poolBadge");
+const newSessionButton = document.getElementById("newSessionButton");
 const chatTitle = document.getElementById("chatTitle");
 const userBadge = document.getElementById("userBadge");
 const suggestedQuestions = document.getElementById("suggestedQuestions");
@@ -126,6 +127,7 @@ function bindEvents() {
     const question = event.target.closest("[data-question]")?.dataset.question;
     if (!question) return;
     chatInput.value = question;
+    chatInput.dispatchEvent(new Event("input"));
     chatInput.focus();
   });
 
@@ -135,6 +137,27 @@ function bindEvents() {
     if (!question || store.user?.role !== "recruiter") return;
     await submitRecruiterQuestion(question);
   });
+
+  if (newSessionButton) {
+    newSessionButton.addEventListener("click", () => {
+      resetRecruiterWorkspace();
+      render();
+    });
+  }
+
+  if (chatInput) {
+    chatInput.addEventListener("input", () => {
+      chatInput.style.height = "auto";
+      chatInput.style.height = chatInput.scrollHeight + "px";
+    });
+
+    chatInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        chatForm.requestSubmit();
+      }
+    });
+  }
 }
 
 async function bootstrapRoleData() {
@@ -191,6 +214,7 @@ async function submitRecruiterQuestion(question) {
   updateChatComposerState();
   addMessage({ author: "Recruiter", role: "user", content: escapeHtml(question) });
   chatInput.value = "";
+  chatInput.style.height = "auto";
   const typingId = addTypingMessage();
   const start = performance.now();
 
@@ -250,6 +274,10 @@ function render() {
   chatPanel.classList.toggle("hidden", !isRecruiterRoute);
   workspace.classList.toggle("single-column", !isRecruiterRoute);
 
+  if (newSessionButton) {
+    newSessionButton.style.display = isRecruiterRoute ? "inline-block" : "none";
+  }
+
   if (!isLoggedIn && !["/login", "/signup"].includes(route)) {
     navigate("/login", true);
     return;
@@ -308,17 +336,29 @@ function renderCandidateData() {
 function renderRecruiterData() {
   poolBadge.textContent = `${store.poolCount || 0} candidates indexed`;
   matchedCandidates.innerHTML = store.recruiterMatches.length
-    ? store.recruiterMatches.map((candidate) => `
-        <article class="candidate-card active">
-          <header>
-            <div>
-              <strong>${escapeHtml(candidate.name)}</strong>
-              <div class="candidate-meta">${escapeHtml(candidate.structuredData?.summary || "Summary not clearly available")}</div>
+    ? store.recruiterMatches.map((candidate) => {
+        const scoreVal = candidate.retrieval?.score !== undefined ? candidate.retrieval.score : 0;
+        const matchPercent = Math.round(scoreVal * 100);
+        const resumeScore = candidate.resumeScore !== undefined ? candidate.resumeScore : 0;
+        return `
+          <article class="candidate-card active">
+            <header>
+              <div>
+                <strong>${escapeHtml(candidate.name)}</strong>
+                <div class="candidate-meta">${escapeHtml(candidate.structuredData?.summary || "Summary not clearly available")}</div>
+              </div>
+              <span class="score-badge">${matchPercent}% match</span>
+            </header>
+            ${candidate.retrieval?.reason ? `
+              <p class="match-reason">${escapeHtml(candidate.retrieval.reason)}</p>
+            ` : ""}
+            <div class="score-bar" title="Resume Score: ${resumeScore}%">
+              <div class="score-fill" style="width: ${resumeScore}%"></div>
             </div>
-          </header>
-          <div class="candidate-meta">${escapeHtml((candidate.metadata?.skills || []).slice(0, 4).join(", ") || "Skills not clearly available")}</div>
-        </article>
-      `).join("")
+            <div class="candidate-meta">${escapeHtml((candidate.metadata?.skills || []).slice(0, 4).join(", ") || "Skills not clearly available")}</div>
+          </article>
+        `;
+      }).join("")
     : createEmptyState("No matches yet", "Recruiters can ask questions without uploading resumes.");
   recruiterJsonOutput.textContent = JSON.stringify({
     matchedCandidates: store.recruiterMatches,

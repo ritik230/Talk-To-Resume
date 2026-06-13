@@ -8,7 +8,6 @@ export function validateAuthConfiguration() {
     throw new Error("JWT_SECRET is required and must be configured before starting the server.");
   }
 }
-
 export async function createUser({ name, email, password, role }) {
   const { usersCollection } = getCollections();
   const normalizedEmail = normalizeEmail(email);

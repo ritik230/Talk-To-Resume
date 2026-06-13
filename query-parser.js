@@ -138,7 +138,6 @@ export function parseRecruiterQuery(question, session = {}) {
     }
   };
 }
-
 export function mergeFilters(previous = {}, current = {}) {
   const merged = { ...previous, ...current };
   if (Array.isArray(previous.skills) || Array.isArray(current.skills)) {

@@ -67,7 +67,6 @@ const state = {
 };
 
 const categories = ["All", "Backend", "Database", "Tools", "Communication"];
-
 const candidateName = document.getElementById("candidateName");
 const candidateRole = document.getElementById("candidateRole");
 const candidateSummary = document.getElementById("candidateSummary");

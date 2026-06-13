@@ -12,7 +12,6 @@ const DEFAULT_SESSION_STATE = {
   history: [],
   summary: ""
 };
-
 export async function getSession(sessionId, userId) {
   const { sessionsCollection } = getCollections();
   const existing = await sessionsCollection.findOne({ sessionId, userId });

@@ -341,7 +341,6 @@ function sanitizeAnswer(answer) {
   if (typeof answer !== "string" || !answer.trim()) {
     return "This information is not clearly available in the provided resumes.";
   }
-
   return answer
     .replace(/^here is the json requested[:\s-]*/i, "")
     .replace(/^json[:\s-]*/i, "")

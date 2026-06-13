@@ -6,7 +6,6 @@ let usersCollection;
 let candidatesCollection;
 let sessionsCollection;
 let retrievalMetricsCollection;
-
 export async function connectDatabase() {
   const mongoUri = process.env.MONGODB_URI;
   const databaseName = process.env.MONGODB_DB || "talk_to_resume";

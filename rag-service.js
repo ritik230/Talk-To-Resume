@@ -6,8 +6,9 @@ import { convertCandidateDocumentForRetrieval, exposeMatchedCandidate } from "./
 import { embedText, cosineSimilarity, keywordFallbackRanking, rankResumesByQuery } from "./embeddings.js";
 
 const EMBEDDING_CACHE = new Map();
+const EMBEDDING_CACHE_MAX_SIZE = 500;
 const MAX_SESSION_HISTORY = 20;
-const MAX_LLM_HISTORY = 5;
+const MAX_LLM_HISTORY = 10;
 let getCollections = importedGetCollections;
 let getSession = importedGetSession;
 let updateSession = importedUpdateSession;
@@ -41,7 +42,7 @@ export async function answerRecruiterQuestion({ recruiter, question, sessionId }
       activeRole: session.searchContext.activeRole || session.activeRole || ""
     }
     : session;
-  const shouldMergeSessionFilters = parsed.followUp || parsed.searchAgain || parsed.singularReference || parsed.pluralReference || parsed.contact || parsed.project || parsed.salary || parsed.exclusion;
+  const shouldMergeSessionFilters = parsed.followUp || parsed.searchAgain || parsed.singularReference || parsed.pluralReference || parsed.contact || parsed.project || parsed.salary || parsed.exclusion || parsed.comparison || parsed.locationAnalytics;
   const mergedFilters = shouldMergeSessionFilters ? mergeFilters(contextSession.filters || {}, parsed.filters) : parsed.filters;
   const searchText = buildSearchText(question, mergedFilters, contextSession, parsed);
   const hydeText = buildHydeQueryText(question, mergedFilters, session, parsed);
@@ -62,7 +63,14 @@ export async function answerRecruiterQuestion({ recruiter, question, sessionId }
   if (!allCandidates.length) {
     throw new Error("No candidate profiles are available yet.");
   }
-  const searchableCandidates = allCandidates.filter((candidate) => candidate.embeddingStatus === "success");
+  const dbPreFilter = buildMongoPreFilter(mergedFilters);
+  let searchableCandidates;
+  if (Object.keys(dbPreFilter).length > 0) {
+    const dbFiltered = await candidatesCollection.find({ ...dbPreFilter, embeddingStatus: "success" }).toArray();
+    searchableCandidates = dbFiltered.length >= 2 ? dbFiltered : allCandidates.filter((c) => c.embeddingStatus === "success");
+  } else {
+    searchableCandidates = allCandidates.filter((c) => c.embeddingStatus === "success");
+  }
 
   const resolvedExactCandidate = resolveExactCandidateFromQuestion(question, parsed.exactName, allCandidates);
   const hasExactCandidate = Boolean(resolvedExactCandidate);
@@ -842,8 +850,9 @@ function scoreCandidate(candidate, filters, parsed, queryVector) {
     ? requestedSkills.filter((skill) => candidateSkills.some((candidateSkill) => candidateSkill.toLowerCase().includes(skill.toLowerCase()))).length
     : Math.min(candidateSkills.length / 6, 1);
   const skillMatch = requestedSkills.length ? skillMatches / requestedSkills.length : skillMatches;
-
-  const finalScore = (vectorSimilarity * 0.7) + (experienceMatch * 0.2) + (skillMatch * 0.1);
+  const w = getScoringWeights(parsed, filters);
+  const exactSkillBonus = requestedSkills.length > 0 && skillMatches === requestedSkills.length ? 0.08 : 0;
+  const finalScore = (vectorSimilarity * w.vector) + (experienceMatch * w.experience) + (skillMatch * w.skill) + exactSkillBonus;
   const reason = buildReason(candidate, filters, candidateSkills, candidateExperience, finalScore);
   return {
     ...candidate,
@@ -1333,6 +1342,12 @@ function buildAssistantPrompt({ question, summary, recentMessages, shortlisted, 
     selectedCandidate?.name
       ? `Selected candidate in memory: ${selectedCandidate.name}.`
       : "No single candidate is locked in memory.",
+    selectedCandidate?.topSkills?.length
+      ? `Selected candidate's known skills: ${selectedCandidate.topSkills.join(", ")}.`
+      : null,
+    selectedCandidate?.recentExperience?.length
+      ? `Selected candidate's recent experience: ${selectedCandidate.recentExperience.join("; ")}.`
+      : null,
     "Session summary:",
     summary || "No summary available.",
     "Recent conversation (last 5 messages):",
@@ -1353,7 +1368,7 @@ function buildAssistantPrompt({ question, summary, recentMessages, shortlisted, 
     "Only use RETRIEVE_MORE when the current shortlist is insufficient.",
     `Recruiter question: ${question}`,
     "Return plain text only. Do not return JSON."
-  ].join("\n\n");
+  ].filter(Boolean).join("\n\n");
 }
 
 async function requestOpenAiText(prompt) {
@@ -1700,7 +1715,12 @@ function buildSessionSummary(previousSummary, question, filters, shortlisted, se
   }
   summaryParts.push(`Latest question: ${question}.`);
 
-  return summaryParts.join(" ").replace(/\s+/g, " ").trim();
+  const currentSummary = summaryParts.join(" ").replace(/\s+/g, " ").trim();
+  if (previousSummary && previousSummary.trim() && previousSummary !== currentSummary) {
+    const combined = `${currentSummary} | Prior context: ${previousSummary}`;
+    return combined.slice(0, 700).trim();
+  }
+  return currentSummary;
 }
 
 function buildRetrievalEvaluation({ question, parsed, filters, ranked, k = 5 }) {
@@ -1930,10 +1950,14 @@ function formatContactLine(candidate) {
 
 function toSelectedCandidate(candidate) {
   if (!candidate) return null;
+  const profile = candidate.parsedData || candidate.structuredData || {};
   return {
     id: candidate.id,
     name: candidate.name,
-    metadata: candidate.metadata || {}
+    metadata: candidate.metadata || {},
+    topSkills: (profile.skills || []).slice(0, 8).map((s) => s.name).filter(Boolean),
+    recentExperience: (profile.experience || []).slice(0, 2).map((e) => `${e.role}${e.company ? ` at ${e.company}` : ""}`).filter(Boolean),
+    contactDetails: profile.contactDetails || {}
   };
 }
 
@@ -1985,11 +2009,13 @@ function scopeCandidatesToSession(pool, session, parsed) {
   }
 
   if (parsed.singularReference && session.selectedCandidate && !parsed.comparison) {
-    return pool.filter((candidate) => candidate.id === session.selectedCandidate.id || candidate.name === session.selectedCandidate.name);
+    const filtered = pool.filter((candidate) => candidate.id === session.selectedCandidate.id || candidate.name === session.selectedCandidate.name);
+    return filtered.length ? filtered : pool;
   }
 
   if (parsed.followUp && session.selectedCandidate && !parsed.comparison) {
-    return pool.filter((candidate) => candidate.id === session.selectedCandidate.id || candidate.name === session.selectedCandidate.name);
+    const filtered = pool.filter((candidate) => candidate.id === session.selectedCandidate.id || candidate.name === session.selectedCandidate.name);
+    return filtered.length ? filtered : pool;
   }
 
   if (parsed.comparison && shortlist.length) {
@@ -2163,7 +2189,7 @@ async function embedSingleQueryEmbedding(text, mode, suffix = "query") {
     if (!vector.length) {
       throw new Error("Gemini query embedding response did not include a vector.");
     }
-    EMBEDDING_CACHE.set(cacheKey, vector);
+    setCachedEmbedding(cacheKey, vector);
     return vector;
   } catch (error) {
     throw error instanceof Error
@@ -2250,6 +2276,41 @@ function averageVectors(vectors) {
   }
 
   return averaged.map((value) => value / validVectors.length);
+}
+
+function buildMongoPreFilter(filters) {
+  const match = {};
+  if (filters.role) {
+    match["metadata.role"] = filters.role;
+  }
+  if (filters.location) {
+    match["metadata.location"] = { $regex: filters.location, $options: "i" };
+  }
+  return match;
+}
+
+function getScoringWeights(parsed, filters) {
+  if (
+    parsed.intent === "location_filter_search"
+    || (Array.isArray(filters.locations) && filters.locations.length > 0)
+  ) {
+    return { vector: 0.45, experience: 0.15, skill: 0.40 };
+  }
+  if (Array.isArray(filters.skills) && filters.skills.length >= 2) {
+    return { vector: 0.50, experience: 0.15, skill: 0.35 };
+  }
+  if (Number(filters.experience || 0) > 0 || filters.experienceRange) {
+    return { vector: 0.50, experience: 0.40, skill: 0.10 };
+  }
+  return { vector: 0.70, experience: 0.20, skill: 0.10 };
+}
+
+function setCachedEmbedding(key, value) {
+  if (EMBEDDING_CACHE.size >= EMBEDDING_CACHE_MAX_SIZE) {
+    const firstKey = EMBEDDING_CACHE.keys().next().value;
+    EMBEDDING_CACHE.delete(firstKey);
+  }
+  EMBEDDING_CACHE.set(key, value);
 }
 
 function joinList(items) {

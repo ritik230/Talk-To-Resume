@@ -59,7 +59,6 @@ export function createCandidateSemanticDocument(parsedData) {
 export function buildSemanticProfile(parsedData) {
   return buildLocalSemanticProfile(parsedData);
 }
-
 export function buildLocalSemanticProfile(parsedData) {
   const document = createCandidateSemanticDocument(parsedData);
   return {
