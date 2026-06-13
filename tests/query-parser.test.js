@@ -8,7 +8,6 @@ test("parseRecruiterQuery routes candidate location filters to location_filter_s
   assert.equal(parsed.intent, "location_filter_search");
   assert.equal(parsed.filters.location, "Delhi");
 });
-
 test("parseRecruiterQuery routes location summaries to location_analytics", () => {
   const parsed = parseRecruiterQuery("which locations are available");
 

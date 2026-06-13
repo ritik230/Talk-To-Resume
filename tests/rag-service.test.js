@@ -45,7 +45,6 @@ function createParsedData({
     strengths
   };
 }
-
 function createCandidateDoc(parsedData, { embeddingStatus = "success" } = {}) {
   const semanticProfile = embeddingStatus === "success" ? buildLocalSemanticProfile(parsedData) : null;
   return {
